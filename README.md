@@ -65,7 +65,7 @@ g++ -std=c++17 -Wall -O2 main.cpp -o wordcount_df -pthread
 
   1. <map任务数> (argv[1]): 指定Map阶段并发运行的任务数量（线程数）。
   2. <reduce任务数> (argv[2]): 指定Reduce阶段并发运行的任务数量（线程数）。
-  3. <内存分配器> (argv[3]): 指定使用的内存分配器。从代码看，目前支持 **standard**。
+  3. <内存分配器> (argv[3]): 指定使用的内存分配器。目前只支持 **standard**，如有需要可以自定义Allocator，并按照代码结构及框架使用说明加入到此MapReduce框架中。
   4. <数据源类型> (argv[4]): 指定数据从哪里来。
      - **file**: 从文件读取。
      - **generated**: 程序内部生成随机数据（用于测试）。
