@@ -209,11 +209,11 @@ run_mr_single_iteration/run_mr函数是驱动单次MapReduce计算流程的核�
 
 通知底层内存分配器本次计算已结束，可以进行资源回收等清理工作（例如，解除共享内存段的附加）。
 
-## 四. MapReduce的示例任务二 ——WordCount
+## 三. MapReduce的示例任务 ——WordCount
 
 WordCount的任务是统计给定文本中每个单词出现的次数。我们将通过`WordCount.h`（业务实现）和`main.cpp`（驱动程序）两个文件来展示如何利用我们的框架完成这个任务。
 
-### 4.1 WordCount.h
+### 3.1 WordCount.h
 
 `WordCount`类继承自`MapReduce`基类，它继承了 `MapReduce` 类的所有通用并行框架逻辑，并在此基础上，通过重写三个核心的纯虚函数（`map_func`, `reduce_func`, `splice`），注入了K-均值算法的特定业务逻辑。这里简要介绍一下这几个重写函数的主要工作：
 
@@ -227,7 +227,7 @@ WordCount的任务是统计给定文本中每个单词出现的次数。我们�
    2. **统计**: 使用一个哈希表（`std::unordered_map`）来存储单词和其对应的计数值。每当收到一个单词，就在哈希表中将其计数值加一。
    3. **输出**: 当所有单词处理完毕后，（在这个示例中）它会打印出自己处理了多少个**独立不重复**的单词。在实际应用中，这里通常会将最终的统计结果写入到输出文件。
 
-### 4.2 main.cpp
+### 3.2 main.cpp
 
 `main.cpp`是专为WordCount任务设计的驱动程序，主要依靠调用上层接口来完成整体任务，会将数据源、内存分配器、MapReduce任务组合在一起，并按照预定的逻辑顺序（加载数据 -> 运行计算 -> 输出结果）来驱动整个流程。所有实现MapReduce任务的main.cpp都可以参考本文件的基本流程：
 
@@ -251,19 +251,19 @@ WordCount的任务是统计给定文本中每个单词出现的次数。我们�
 
 在所有组件都准备好之后，实例化`WordCount`任务，并将之前创建的分配器注入进去。 与KMeans不同，WordCount任务通常**只需要执行一次**，不需要迭代。因此，这里直接调用了`run_mr`函数（而不是`run_mr_single_iteration`），由它来完成一次完整的MapReduce流程，并处理内部的计时和信息打印。
 
-### 4.3 total_experiment.sh
+### 3.3 total_experiment.sh
 
 前面的WordCount主体文件是一个独立完整的Benchmark，这个脚本仅是为了评估TPP，Weighted Interleaving更改对WordCount任务的影响而编写的，不适用于其他目的，也不适合移植到其他实验。
 
 **如果同样想评估以上功能，**此脚本中的**超参数**应该是用户最应当关注和修改的部分，以适配不同的硬件环境和测试目标。
 
-#### 4.3.1 主要功能
+#### 3.3.1 主要功能
 
 本实验旨在探索不同的TPP，Weighted Interleaving等变量设置下，会怎样影响页面调度以及程序的执行情况。详细实验目的，实验变量设置，实验数据，数据分析，注意事项等请参考以下笔记。
 
 [TPP，Weighted Interleaving对WordCount的影响](https://jianmucloud.feishu.cn/wiki/UPX9wwpH1iHHikk4a61cisptnxc?from=from_copylink)
 
-#### 4.3.2 超参数列举与说明
+#### 3.3.2 超参数列举与说明
 
 - **`EXECUTABLE`**: 指定要运行的WordCount C++程序的可执行文件名。当前值为`./wordcount_df`。
 - **`DATASET_PATH`**: 定义用作输入的文本文件的完整路径。
