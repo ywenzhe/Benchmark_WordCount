@@ -60,7 +60,7 @@ class MapReduce {
     public:
     int map_num;
     int reduce_num;
-    std::vector<std::list<imm_data>*> vec;
+    std::vector<std::list<imm_data>*>* vec;
 
     inline int get_vec_index(int map_id, int reduce_id) {
         return map_id * reduce_num + reduce_id;
