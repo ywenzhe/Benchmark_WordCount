@@ -18,7 +18,7 @@ extern "C" {
 #include "manager.hpp"
 #include "device.hpp"
 
-constexpr unsigned long long kCacheSize = 30000 * Region::kSize;
+constexpr unsigned long long kCacheSize = 1024 * Region::kSize;
 constexpr unsigned long long kFarMemSize = 7ULL << 30;
 constexpr unsigned long kNumGCThreads = 15;
 constexpr unsigned long long kNumConnections = 800;

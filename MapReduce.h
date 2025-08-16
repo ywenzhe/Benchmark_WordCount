@@ -99,27 +99,27 @@ class MapReduce {
 
 
     // [已修复] 修正了缓冲区溢出的逻辑
-    void emit_intermediate(std::list<imm_data>* inter, const T* data, int len) {
+    void emit_intermediate(std::list<imm_data>* inter, const void* data, int len) {
         // 场景1: 当前块有足够空间，直接拷贝
         if (!inter->empty() && (inter->back().count + len <= imm_data_size)) {
-            memcpy((T*)inter->back().data + inter->back().count, data, len * sizeof(T));
+            memcpy((char*)inter->back().data + inter->back().count, data, len);
             inter->back().count += len;
             return;
         }
 
         // 场景2: 当前块空间不足或没有块，需要分配新块
         // 新块的大小必须能容纳下当前数据。取默认大小和当前数据长度中的较大者。
-        size_t new_block_size = std::max((size_t)len, (size_t)imm_data_size) * sizeof(T);
+        size_t new_block_size = std::max((size_t)len, (size_t)imm_data_size);
 
         struct imm_data inter_en;
-        inter_en.data = malloc(new_block_size); // check
+        inter_en.data = malloc(new_block_size);
         if (!inter_en.data) {
             throw std::runtime_error("Failed to allocate intermediate data block.");
         }
 
         // 将数据拷贝到这个全新的块中
-        memcpy(inter_en.data, data, len * sizeof(T));
-        inter_en.count = len; // 这个块已使用的元素数量
+        memcpy(inter_en.data, data, len);
+        inter_en.count = len; // 这个块已使用的字节数
         inter->push_back(inter_en);
     }
 

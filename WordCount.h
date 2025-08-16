@@ -30,18 +30,20 @@ public:
         return djb_hash(word) % reduce_num;
     }
 
-    // 实现Map功能
+    // 实现Map功能  
     void map_func(DataFrameVector<char>* map_data, int task_id, size_t offset, size_t data_length) override {
-        // 使用较大的缓冲区批量读取数据，减少远程访问
-        constexpr size_t BUFFER_SIZE = 512;
-        char buffer[BUFFER_SIZE];
-        std::vector<char> word_buffer; // 安全的临时缓冲区
-
+        // 使用批量读取提高性能，但保持与原版本相同的处理逻辑
+        constexpr size_t BUFFER_SIZE = 8192;
+        std::vector<char> buffer(BUFFER_SIZE);
+        std::vector<char> word_buffer;
+        
         size_t end_pos = offset + data_length;
         size_t current_pos = offset;
         
+        printf("[Mapper %d] Processing range [%zu, %zu), length=%zu\n", 
+               task_id, offset, end_pos, data_length);
+        
         while (current_pos < end_pos) {
-            // 每次处理一个缓冲区的数据
             DerefScope scope;
             size_t chunk_size = std::min(BUFFER_SIZE, end_pos - current_pos);
             
@@ -50,8 +52,10 @@ public:
                 buffer[i] = map_data->at(scope, current_pos + i);
             }
             
-            // 在本地缓冲区中处理单词
+            // 使用与原版本相同的逐字符处理逻辑
             size_t i = 0;
+            bool has_cross_boundary_word = false;
+            
             while (i < chunk_size) {
                 // 跳过非字母字符
                 while (i < chunk_size && !isalpha(buffer[i])) {
@@ -68,59 +72,60 @@ public:
                     i++;
                 }
                 
-                // 如果单词被缓冲区边界切断
-                if (i == chunk_size && current_pos + i < end_pos) {
-                    // 处理跨越缓冲区边界的单词
+                // 如果单词完整在缓冲区内
+                if (i < chunk_size || current_pos + i >= end_pos) {
+                    if (i > word_start) {
+                        size_t word_len = i - word_start;
+                        word_buffer.resize(word_len + 1);
+                        
+                        // 复制单词并转为小写
+                        for (size_t k = 0; k < word_len; ++k) {
+                            word_buffer[k] = tolower(buffer[word_start + k]);
+                        }
+                        word_buffer[word_len] = '\0';
+                        
+                        // 发送到reducer
+                        int reduce_id = shuffle_func(word_buffer.data());
+                        emit_intermediate(vec->at(get_vec_index(task_id, reduce_id)), 
+                                         word_buffer.data(), word_len + 1);
+                    }
+                } else {
+                    // 单词跨越缓冲区边界，需要特殊处理
+                    // 先处理缓冲区内的部分
                     word_buffer.clear();
+                    for (size_t k = word_start; k < chunk_size; ++k) {
+                        word_buffer.push_back(tolower(buffer[k]));
+                    }
                     
-                    // 先复制当前缓冲区中的部分
-                    word_buffer.insert(word_buffer.end(), buffer + word_start, buffer + i);
-                    
-                    // 然后继续读取剩余部分
-                    size_t next_pos = current_pos + i;
+                    // 继续读取单词的剩余部分
                     scope.renew();
-                    
+                    size_t next_pos = current_pos + chunk_size;
                     while (next_pos < end_pos && 
                            (isalpha(map_data->at(scope, next_pos)) || map_data->at(scope, next_pos) == '\'')) {
-                        word_buffer.push_back(map_data->at(scope, next_pos));
+                        word_buffer.push_back(tolower(map_data->at(scope, next_pos)));
                         next_pos++;
                     }
                     
-                    // 添加终止符
-                    word_buffer.push_back('\0');
-                    
-                    // 转为小写
-                    for (size_t k = 0; k < word_buffer.size() - 1; ++k) {
-                        word_buffer[k] = tolower(word_buffer[k]);
+                    if (!word_buffer.empty()) {
+                        word_buffer.push_back('\0');
+                        
+                        // 发送到reducer
+                        int reduce_id = shuffle_func(word_buffer.data());
+                        emit_intermediate(vec->at(get_vec_index(task_id, reduce_id)), 
+                                         word_buffer.data(), word_buffer.size());
                     }
                     
-                    // 发送到reducer
-                    int reduce_id = shuffle_func(word_buffer.data());
-                    emit_intermediate(vec->at(get_vec_index(task_id, reduce_id)), 
-                                     word_buffer.data(), word_buffer.size());
-                    
-                } else if (i > word_start) {
-                    // 处理完整的单词
-                    int word_len = i - word_start;
-                    word_buffer.resize(word_len + 1); // +1 for null terminator
-                    
-                    // 复制单词到缓冲区
-                    memcpy(word_buffer.data(), buffer + word_start, word_len);
-                    word_buffer.back() = '\0'; // 添加null终止符
-                    
-                    // 转为小写
-                    for (int k = 0; k < word_len; ++k) {
-                        word_buffer[k] = tolower(word_buffer[k]);
-                    }
-                    
-                    // 发送到reducer
-                    int reduce_id = shuffle_func(word_buffer.data());
-                    emit_intermediate(vec->at(get_vec_index(task_id, reduce_id)), 
-                                     word_buffer.data(), word_len + 1);
+                    // 调整位置：下一个缓冲区从单词结束后开始
+                    current_pos = next_pos;
+                    has_cross_boundary_word = true;
+                    break; // 跳出内层循环，读取下一个缓冲区
                 }
             }
-            // 移动到下一个缓冲区
-            current_pos += chunk_size;
+            
+            // 如果没有跨边界单词，正常前进到下一个缓冲区
+            if (!has_cross_boundary_word) {
+                current_pos += chunk_size;
+            }
         }
     }
 
@@ -166,11 +171,13 @@ public:
                 data_dis[i] = data_length - current_offset;
             } else {
                 size_t boundary = current_offset + avg_len_per_map;
-                if (boundary >= data_length) boundary = data_length;
-                
-                // 确保边界不会切断单词 - 找到下一个非字母字符
-                while (boundary < data_length && isalpha(map_data->at(scope, boundary))) {
-                    boundary++;
+                if (boundary >= data_length) {
+                    boundary = data_length;
+                } else {
+                    // 确保边界不会切断单词 - 找到下一个非字母字符
+                    while (boundary < data_length && isalpha(map_data->at(scope, boundary))) {
+                        boundary++;
+                    }
                 }
                 
                 data_dis[i] = boundary - current_offset;
