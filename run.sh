@@ -2,21 +2,19 @@
 
 source ../../shared.sh
 
+arr_aifm_heap_size=( 1250 2500 3750 5000 6250 7500 8750 10000 11250 12500 13750 15000 )
+
 # 确保之前的进程已经终止
 sudo pkill -9 main
 
-# 编译程序
-make clean
-make -j
+for((i=0; i<${#arr_aifm_heap_size[@]}; ++i)); do
+    cur_heap_size=${arr_aifm_heap_size[i]}
+    sed "s/constexpr static uint64_t kCacheSize = .*/constexpr size_t kCacheSize = $cur_heap_size * Region::kSize;/g" main.cpp -i
+    make clean
+    make -j
+    rerun_local_iokerneld
+    rerun_mem_server
+    run_program ./main | grep "=" 1>log.$cur_heap_size 2>&1
+done
 
-# 重启IO内核和内存服务器
-rerun_local_iokerneld
-rerun_mem_server
-
-# 运行程序
-echo "启动WordCount MapReduce程序..."
-run_program ./main
-
-# 完成后清理
 kill_local_iokerneld
-echo "程序执行完成"

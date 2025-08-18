@@ -1,4 +1,0 @@
-hello world this is a test
-hello mapreduce this is fun
-mapreduce mapreduce mapreduce
-test test fun
